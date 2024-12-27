@@ -1,9 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import tensorflow as tf
-from tensorflow.python.keras.models import Sequential
-from tensorflow.python.keras.layers import Dense, Dropout
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 from sklearn.naive_bayes import GaussianNB
@@ -13,9 +10,8 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from xgboost import XGBClassifier
-from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from imblearn.over_sampling import SMOTE
-import matplotlib.pyplot as plt
 
 # Set page config
 st.set_page_config(page_title="Churn Prediction App", layout="wide")
@@ -37,13 +33,18 @@ if uploaded_file is not None:
     st.write("### Data Preview:")
     st.write(data.head())
 
-    # Preprocess data
+    # Preprocess data: Drop unnecessary columns
     data = data.drop(['RowNumber', 'CustomerId', 'Surname'], axis=1)
 
-    # Label Encoding for categorical columns
-    le = LabelEncoder()
-    data["Gender"] = le.fit_transform(data["Gender"])
-    data["Geography"] = le.fit_transform(data["Geography"])
+    # Initialize OneHotEncoder for categorical columns with handle_unknown='ignore'
+    encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
+    
+    # Fit encoder on categorical features and transform the dataset
+    encoded_features = encoder.fit_transform(data[['Gender', 'Geography']])
+    
+    # Create DataFrame for encoded features and concatenate with original data (excluding original categorical columns)
+    encoded_df = pd.DataFrame(encoded_features, columns=encoder.get_feature_names_out(['Gender', 'Geography']))
+    data = pd.concat([data.drop(['Gender', 'Geography'], axis=1), encoded_df], axis=1)
 
     x = data.drop('Exited', axis=1)
     y = data['Exited']
@@ -73,16 +74,13 @@ if uploaded_file is not None:
 
     # Train and evaluate models
     accuracy_results = {}
-    progress_bar = st.progress(0)
     
-    for i, (name, model) in enumerate(models.items()):
+    for name, model in models.items():
         with st.spinner(f"Training {name}..."):
             model.fit(x_train, y_train)
             predictions = model.predict(x_test)
             accuracy = accuracy_score(y_test, predictions)
             accuracy_results[name] = accuracy
-            
-            progress_bar.progress((i + 1) / len(models))
 
     st.success("Training complete!")
 
@@ -94,64 +92,93 @@ if uploaded_file is not None:
     
     st.write(results_df.style.highlight_max(axis=0))
 
-    # Visualize results with improved aesthetics
-    st.subheader("Model Accuracy Comparison")
-    
-    fig, ax = plt.subplots(figsize=(10, 6))
-    results_df.plot(kind='bar', ax=ax, color='skyblue')
-    
-    plt.title("Model Accuracy Comparison", fontsize=16)
-    plt.xlabel("Models", fontsize=12)
-    plt.ylabel("Accuracy", fontsize=12)
-    
-    plt.xticks(rotation=45, ha='right')
-    
-    st.pyplot(fig)
-
     # Best model display with additional details
-    if accuracy_results:  # Ensure there are results to avoid KeyError
-        best_model_name = results_df.index[0]
-        best_model = models[best_model_name]  # Assign the best model after training
-        
-        st.subheader(f"Best Model: {best_model_name}")
-        st.write(f"Accuracy: {results_df.iloc[0]['Accuracy']:.3f}")
+    best_model_name = results_df.index[0]
+    best_model = models[best_model_name]  # Assign the best model after training
+    
+    st.subheader(f"Best Model: {best_model_name}")
 
-        # Make predictions section with improved layout and instructions
-        st.subheader("Make Predictions")
-        
-        input_data = {}
-        
-        # Define mappings for categorical variables to display meaningful labels in select boxes.
-        geography_mapping = {0: 'France', 1: 'Spain', 2: 'Germany'}
-        gender_mapping = {0: 'Female', 1: 'Male'}
+# Enhanced frontend for Make Predictions section
 
-        for column in x.columns:
-            if column in ['CreditScore', 'Age', 'Tenure', 'Balance', 'NumOfProducts', 'EstimatedSalary']:
-                input_data[column] = st.number_input(f"Enter {column}", value=float(x[column].mean()), format="%.2f")
-            elif column == 'Geography':
-                input_data[column] = st.selectbox(f"Select Geography", options=list(geography_mapping.keys()), format_func=lambda x: geography_mapping[x])
-            elif column == 'Gender':
-                input_data[column] = st.selectbox(f"Select Gender", options=list(gender_mapping.keys()), format_func=lambda x: gender_mapping[x])
-            else:
-                input_data[column] = st.checkbox(f"{column}")
+st.subheader("Make Predictions")
+st.markdown("""
+Please fill in the details below to predict customer churn.
+""")
 
-        if st.button("Predict Churn"):
-            try:
-                input_df = pd.DataFrame([input_data])
-                input_df['Gender'] = le.transform(input_df['Gender'])
-                input_df['Geography'] = le.transform(input_df['Geography'])
-                input_scaled = scaler.transform(input_df)
-                
-                prediction = best_model.predict(input_scaled)
-                probability = best_model.predict_proba(input_scaled)[0][1]
-                
-                if prediction[0] == 1:
-                    st.error(f"The customer is likely to churn. Probability: {probability:.2f}")
-                else:
-                    st.success(f"The customer is likely to stay. Probability: {1 - probability:.2f}")
-            
-            except Exception as e:
-                st.error(f"Error in prediction: {str(e)}")
+# Input data with all required features in an organized layout using columns
+col1, col2 = st.columns(2)
+
+with col1:
+    credit_score = st.number_input("Credit Score", value=600.0, format="%.2f")
+    age = st.number_input("Age", value=35, format="%d")
+    tenure = st.number_input("Tenure", value=5, format="%d")
+    
+with col2:
+    balance = st.number_input("Balance", value=50000.0, format="%.2f")
+    num_of_products = st.number_input("Number of Products", value=1, format="%d")
+    has_credit_card = st.selectbox("Has Credit Card?", options=[0, 1])  # 0 = No, 1 = Yes
+
+col3, col4 = st.columns(2)
+
+with col3:
+    is_active_member = st.selectbox("Is Active Member?", options=[0, 1])  # 0 = No, 1 = Yes
+    estimated_salary = st.number_input("Estimated Salary", value=100000.0, format="%.2f")
+
+with col4:
+    geography = st.selectbox("Select Geography", options=['France', 'Spain', 'Germany'])
+    gender = st.selectbox("Select Gender", options=['Female', 'Male'])
+
+if st.button("Predict Churn"):
+    try:
+        # Map inputs to DataFrame
+        input_data = {
+            "CreditScore": credit_score,
+            "Age": age,
+            "Tenure": tenure,
+            "Balance": balance,
+            "NumOfProducts": num_of_products,
+            "HasCrCard": has_credit_card,
+            "IsActiveMember": is_active_member,
+            "EstimatedSalary": estimated_salary,
+            "Geography": geography,
+            "Gender": gender
+        }
+        
+        input_df = pd.DataFrame([input_data])
+
+        # One-hot encode categorical features
+        encoded_input_features = encoder.transform(input_df[['Gender', 'Geography']])
+        encoded_input_df = pd.DataFrame(
+            encoded_input_features,
+            columns=encoder.get_feature_names_out(['Gender', 'Geography'])
+        )
+
+        # Merge encoded features with numerical data
+        input_df = pd.concat([input_df.drop(['Gender', 'Geography'], axis=1), encoded_input_df], axis=1)
+
+        # Ensure the feature order matches the model's expected order
+        expected_feature_order = [
+            'CreditScore', 'Age', 'Tenure', 'Balance', 'NumOfProducts',
+            'HasCrCard', 'IsActiveMember', 'EstimatedSalary',
+            'Gender_Female', 'Gender_Male',
+            'Geography_France', 'Geography_Germany', 'Geography_Spain'
+        ]
+        input_df = input_df[expected_feature_order]  # Reorder columns
+
+        # Scale features
+        input_scaled = scaler.transform(input_df)
+
+        # Predict churn
+        prediction = best_model.predict(input_scaled)
+        probability = best_model.predict_proba(input_scaled)[0][1]
+
+        if prediction[0] == 1:
+            st.error(f"The customer is likely to churn. Probability: {probability:.2f}")
+        else:
+            st.success(f"The customer is likely to stay. Probability: {1 - probability:.2f}")
+
+    except Exception as e:
+        st.error(f"Error in prediction: {str(e)}")
 
 else:
     st.info("Please upload a CSV file to begin.")
