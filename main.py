@@ -50,8 +50,8 @@ if uploaded_file is not None:
         "Decision Tree": tree.DecisionTreeClassifier(),
         "K-Nearest Neighbors": KNeighborsClassifier(),
         "Random Forest": RandomForestClassifier(),
-        "Support Vector Machine (SVM)": SVC(probability=True),
-        "XGBoost": XGBClassifier(eval_metric='logloss')
+        #"Support Vector Machine (SVM)": SVC(probability=True),
+        #"XGBoost": XGBClassifier(eval_metric='logloss')
     }
 
     accuracy_results = {}
