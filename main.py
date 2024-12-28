@@ -13,10 +13,8 @@ from xgboost import XGBClassifier
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from imblearn.over_sampling import SMOTE
 
-# Set page config
 st.set_page_config(page_title="Churn Prediction App", layout="wide")
 
-# Title and description
 st.title("Churn Prediction Model Comparison")
 st.markdown("""
 This application allows you to upload a customer data CSV file, 
@@ -24,44 +22,28 @@ compare various machine learning models for churn prediction,
 and make predictions on new customer data.
 """)
 
-# File uploader
 uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
 
 if uploaded_file is not None:
-    # Load data
     data = pd.read_csv(uploaded_file)
     st.write("### Data Preview:")
     st.write(data.head())
 
-    # Preprocess data: Drop unnecessary columns
     data = data.drop(['RowNumber', 'CustomerId', 'Surname'], axis=1)
-
-    # Initialize OneHotEncoder for categorical columns with handle_unknown='ignore'
     encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
-    
-    # Fit encoder on categorical features and transform the dataset
     encoded_features = encoder.fit_transform(data[['Gender', 'Geography']])
-    
-    # Create DataFrame for encoded features and concatenate with original data (excluding original categorical columns)
     encoded_df = pd.DataFrame(encoded_features, columns=encoder.get_feature_names_out(['Gender', 'Geography']))
     data = pd.concat([data.drop(['Gender', 'Geography'], axis=1), encoded_df], axis=1)
 
     x = data.drop('Exited', axis=1)
     y = data['Exited']
-
-    # Split the data into training and testing sets
     x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=0)
-
-    # Scale the features
     scaler = StandardScaler()
     x_train = scaler.fit_transform(x_train)
     x_test = scaler.transform(x_test)
-
-    # Handle class imbalance using SMOTE
     smote = SMOTE(random_state=0)
     x_train, y_train = smote.fit_resample(x_train, y_train)
 
-    # Initialize models for comparison
     models = {
         "Logistic Regression": LogisticRegression(max_iter=1000, class_weight='balanced'),
         "Naive Bayes": GaussianNB(),
@@ -72,7 +54,6 @@ if uploaded_file is not None:
         "XGBoost": XGBClassifier(eval_metric='logloss')
     }
 
-    # Train and evaluate models
     accuracy_results = {}
     
     for name, model in models.items():
@@ -83,8 +64,6 @@ if uploaded_file is not None:
             accuracy_results[name] = accuracy
 
     st.success("Training complete!")
-
-    # Display results in a table format with improved visuals
     st.subheader("Model Comparison")
     
     results_df = pd.DataFrame.from_dict(accuracy_results, orient='index', columns=['Accuracy'])
@@ -92,20 +71,16 @@ if uploaded_file is not None:
     
     st.write(results_df.style.highlight_max(axis=0))
 
-    # Best model display with additional details
     best_model_name = results_df.index[0]
-    best_model = models[best_model_name]  # Assign the best model after training
+    best_model = models[best_model_name]
     
     st.subheader(f"Best Model: {best_model_name}")
-
-# Enhanced frontend for Make Predictions section
 
 st.subheader("Make Predictions")
 st.markdown("""
 Please fill in the details below to predict customer churn.
 """)
 
-# Input data with all required features in an organized layout using columns
 col1, col2 = st.columns(2)
 
 with col1:
@@ -130,7 +105,6 @@ with col4:
 
 if st.button("Predict Churn"):
     try:
-        # Map inputs to DataFrame
         input_data = {
             "CreditScore": credit_score,
             "Age": age,
@@ -145,30 +119,20 @@ if st.button("Predict Churn"):
         }
         
         input_df = pd.DataFrame([input_data])
-
-        # One-hot encode categorical features
         encoded_input_features = encoder.transform(input_df[['Gender', 'Geography']])
         encoded_input_df = pd.DataFrame(
             encoded_input_features,
             columns=encoder.get_feature_names_out(['Gender', 'Geography'])
         )
-
-        # Merge encoded features with numerical data
         input_df = pd.concat([input_df.drop(['Gender', 'Geography'], axis=1), encoded_input_df], axis=1)
-
-        # Ensure the feature order matches the model's expected order
         expected_feature_order = [
             'CreditScore', 'Age', 'Tenure', 'Balance', 'NumOfProducts',
             'HasCrCard', 'IsActiveMember', 'EstimatedSalary',
             'Gender_Female', 'Gender_Male',
             'Geography_France', 'Geography_Germany', 'Geography_Spain'
         ]
-        input_df = input_df[expected_feature_order]  # Reorder columns
-
-        # Scale features
+        input_df = input_df[expected_feature_order]
         input_scaled = scaler.transform(input_df)
-
-        # Predict churn
         prediction = best_model.predict(input_scaled)
         probability = best_model.predict_proba(input_scaled)[0][1]
 
